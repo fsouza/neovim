@@ -394,6 +394,7 @@ EXTERN char *p_cink;            ///< 'cinkeys'
 EXTERN char *p_cinsd;           ///< 'cinscopedecls'
 EXTERN char *p_cinw;            ///< 'cinwords'
 EXTERN char *p_cfu;             ///< 'completefunc'
+EXTERN char *p_cff;             ///< 'completefilterfunc'
 EXTERN char *p_ofu;             ///< 'omnifunc'
 EXTERN char *p_tsrfu;           ///< 'thesaurusfunc'
 EXTERN int p_ci;                ///< 'copyindent'
@@ -860,6 +861,7 @@ enum {
   BV_DICT,
   BV_TSR,
   BV_CSL,
+  BV_CFF,
   BV_CFU,
   BV_DEF,
   BV_INC,

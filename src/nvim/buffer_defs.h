@@ -673,6 +673,7 @@ struct file_buffer {
   char *b_p_csl;                ///< 'completeslash'
 #endif
   char *b_p_cfu;                ///< 'completefunc'
+  char *b_p_cff;                ///< 'completefilterfunc'
   char *b_p_ofu;                ///< 'omnifunc'
   char *b_p_tfu;                ///< 'tagfunc'
   int b_p_eol;                  ///< 'endofline'
