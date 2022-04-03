@@ -1260,3 +1260,176 @@ describe('completion', function()
     assert_alive()
   end)
 end)
+
+describe("fuzzy completion: completefilterfunc", function()
+  local screen
+
+  before_each(function()
+    clear()
+    screen = Screen.new(60, 8)
+    screen:attach()
+    screen:set_default_attr_ids({
+      [0] = {bold=true, foreground=Screen.colors.Blue},
+      [1] = {background = Screen.colors.LightMagenta},
+      [2] = {background = Screen.colors.Grey},
+      [3] = {bold = true},
+      [4] = {bold = true, foreground = Screen.colors.SeaGreen},
+      [5] = {foreground = Screen.colors.Red},
+      [6] = {background = Screen.colors.Black},
+      [7] = {foreground = Screen.colors.White, background = Screen.colors.Red},
+      [8] = {reverse = true},
+      [9] = {bold = true, reverse = true},
+      [10] = {foreground = Screen.colors.Grey0, background = Screen.colors.Yellow},
+    })
+
+    source([[
+      func ListMonths()
+        call complete(col("."), ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'])
+        return ""
+      endfunc
+
+      func HelloWorld()
+        call complete(col("."), ["hello", "world"])
+        return ""
+      endfunc
+
+      func FilterAll(a, b)
+        return 0
+      endfunc
+
+      func FilterNone(a, b)
+        return 1
+      endfunc
+
+      func FilterBasic(_, b)
+        return char2nr(a:b[0])
+      endfunc
+      set completeopt+=noselect
+    ]])
+  end)
+
+  it("filters out all candidates if filterfunc returns 0", function()
+    feed_command("set completefilterfunc=FilterAll")
+    feed("i<c-r>=ListMonths()<cr>")
+    screen:expect([[
+    ^                                                            |
+    {0:~                                                           }|
+    {0:~                                                           }|
+    {0:~                                                           }|
+    {0:~                                                           }|
+    {0:~                                                           }|
+    {0:~                                                           }|
+    {3:-- INSERT --}                                                |
+      ]])
+
+    feed("f")
+    screen:expect([[
+    f^                                                           |
+    {0:~                                                           }|
+    {0:~                                                           }|
+    {0:~                                                           }|
+    {0:~                                                           }|
+    {0:~                                                           }|
+    {0:~                                                           }|
+    {3:-- INSERT --}                                                |
+      ]])
+  end)
+
+  it("doesn't filter anything if filterfunc returns 1", function()
+    feed_command("set completefilterfunc=FilterNone")
+    feed("i<c-r>=ListMonths()<cr>")
+    screen:expect([[
+  ^                                                            |
+  {1:January        }{6: }{0:                                            }|
+  {1:February       }{6: }{0:                                            }|
+  {1:March          }{6: }{0:                                            }|
+  {1:April          }{2: }{0:                                            }|
+  {1:May            }{2: }{0:                                            }|
+  {1:June           }{2: }{0:                                            }|
+  {3:-- INSERT --}                                                |
+    ]])
+
+	  feed("f")
+    screen:expect([[
+  f^                                                           |
+  {1:January        }{6: }{0:                                            }|
+  {1:February       }{6: }{0:                                            }|
+  {1:March          }{6: }{0:                                            }|
+  {1:April          }{2: }{0:                                            }|
+  {1:May            }{2: }{0:                                            }|
+  {1:June           }{2: }{0:                                            }|
+  {3:-- INSERT --}                                                |
+   ]])
+  end)
+
+  it("sorts completions by score", function()
+    -- sort in reverse alphabetical order
+    feed_command("set completefilterfunc=FilterBasic")
+    feed("i<c-r>=ListMonths()<cr>")
+    screen:expect([[
+  ^                                                            |
+  {1:January        }{6: }{0:                                            }|
+  {1:February       }{6: }{0:                                            }|
+  {1:March          }{6: }{0:                                            }|
+  {1:April          }{2: }{0:                                            }|
+  {1:May            }{2: }{0:                                            }|
+  {1:June           }{2: }{0:                                            }|
+  {3:-- INSERT --}                                                |
+   ]])
+  end)
+
+  it("works with scrolling", function()
+    feed_command("set completefilterfunc=FilterBasic")
+    feed("i<c-r>=HelloWorld()<cr>")
+
+	screen:expect([[
+  ^                                                            |
+  {1:hello          }{0:                                             }|
+  {1:world          }{0:                                             }|
+  {0:~                                                           }|
+  {0:~                                                           }|
+  {0:~                                                           }|
+  {0:~                                                           }|
+  {3:-- INSERT --}                                                |
+     ]])
+
+    feed("<c-n>")
+
+	screen:expect([[
+  hello^                                                       |
+  {2:hello          }{0:                                             }|
+  {1:world          }{0:                                             }|
+  {0:~                                                           }|
+  {0:~                                                           }|
+  {0:~                                                           }|
+  {0:~                                                           }|
+  {3:-- INSERT --}                                                |
+    ]])
+
+    feed("<Down>")
+	screen:expect([[
+  hello^                                                       |
+  {1:hello          }{0:                                             }|
+  {2:world          }{0:                                             }|
+  {0:~                                                           }|
+  {0:~                                                           }|
+  {0:~                                                           }|
+  {0:~                                                           }|
+  {3:-- INSERT --}                                                |
+    ]])
+
+    -- should cycle back
+    feed("<c-n>")
+
+    screen:expect([[
+  ^                                                            |
+  {1:hello          }{0:                                             }|
+  {1:world          }{0:                                             }|
+  {0:~                                                           }|
+  {0:~                                                           }|
+  {0:~                                                           }|
+  {0:~                                                           }|
+  {3:-- INSERT --}                                                |
+    ]])
+  end)
+end)
