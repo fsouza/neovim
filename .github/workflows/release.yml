@@ -1,16 +1,14 @@
 name: Release
 on:
-  schedule:
-    - cron: '5 5 * * *'
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag name for release'
+        description: "Tag name for release"
         required: false
         default: nightly
   push:
-    tags:
-      - v[0-9]+.[0-9]+.[0-9]+
+    branches:
+      - main
 
 # Build on the oldest supported images, so we have broader compatibility
 # Build with gcc-10 to prevent triggering #14150 (default is still gcc-9 on 20.04)
@@ -44,31 +42,13 @@ jobs:
       - uses: actions/upload-artifact@v3
         with:
           name: nvim-linux64
-          path: |
-            build/nvim-linux64.tar.gz
-            build/nvim-linux64.deb
+          path: build/nvim-linux64.tar.gz
           retention-days: 1
 
-  appimage:
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y autoconf automake build-essential cmake gettext libtool-bin locales ninja-build pkg-config unzip
-      - if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name != 'nightly')
-        run: CC=gcc-10 make appimage-latest
-      - if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name == 'nightly')
-        run: CC=gcc-10 make appimage-nightly
       - uses: actions/upload-artifact@v3
         with:
-          name: appimage
-          path: |
-            build/bin/nvim.appimage
-            build/bin/nvim.appimage.zsync
+          name: nvim-linux64
+          path: build/nvim-linux64.deb
           retention-days: 1
 
   macOS:
@@ -120,40 +100,11 @@ jobs:
           path: build/nvim-macos.tar.gz
           retention-days: 1
 
-  windows:
-    runs-on: windows-2019
-    env:
-      DEPS_BUILD_DIR: ${{ format('{0}/nvim-deps', github.workspace) }}
-      DEPS_PREFIX: ${{ format('{0}/nvim-deps/usr', github.workspace) }}
-      CMAKE_BUILD_TYPE: "RelWithDebInfo"
-    strategy:
-      matrix:
-        include:
-          - config: MSVC_64
-            archive: nvim-win64
-    name: windows (${{ matrix.config }})
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - name: Build deps
-        run: .\ci\build.ps1 -BuildDeps
-      - name: build package
-        run: .\ci\build.ps1 -Package
-      - uses: actions/upload-artifact@v3
-        with:
-          name: ${{ matrix.archive }}
-          path: |
-            build/${{ matrix.archive }}.msi
-            build/${{ matrix.archive }}.zip
-          retention-days: 1
-
   publish:
-    needs: [linux, appimage, macOS, windows]
-    runs-on: ubuntu-latest
+    needs: [linux, macOS]
+    runs-on: ubuntu-20.04
     env:
       GH_REPO: ${{ github.repository }}
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     permissions:
       contents: write
     steps:
@@ -164,28 +115,12 @@ jobs:
       - uses: actions/download-artifact@v3
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y gettext-base
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gettext-base
+          brew update
+          brew install gh
 
-      - if: github.event_name == 'workflow_dispatch'
-        run: echo "TAG_NAME=${{ github.event.inputs.tag_name }}" >> $GITHUB_ENV
-      - if: github.event_name == 'schedule'
-        run: echo 'TAG_NAME=nightly' >> $GITHUB_ENV
-      - if: github.event_name == 'push'
-        run: |
-          TAG_NAME=${{ github.ref }}
-          echo "TAG_NAME=${TAG_NAME#refs/tags/}" >> $GITHUB_ENV
-      - if: env.TAG_NAME == 'nightly'
-        run: |
-          (echo 'SUBJECT=Nvim development (prerelease) build';
-           echo 'PRERELEASE=--prerelease') >> $GITHUB_ENV
-          gh release delete nightly --yes || true
-          git push origin :nightly || true
-      - if: env.TAG_NAME != 'nightly'
-        run: |
-          (echo 'SUBJECT=Nvim release build';
-           echo 'PRERELEASE=') >> $GITHUB_ENV
-          gh release delete stable --yes || true
-          git push origin :stable || true
       # `sha256sum` outputs <sha> <path>, so we cd into each dir to drop the
       # containing folder from the output.
       - name: Generate Linux64 SHA256 checksums
@@ -195,62 +130,24 @@ jobs:
           echo "SHA_LINUX_64_TAR=$(cat nvim-linux64.tar.gz.sha256sum)" >> $GITHUB_ENV
           sha256sum nvim-linux64.deb > nvim-linux64.deb.sha256sum
           echo "SHA_LINUX_64_DEB=$(cat nvim-linux64.deb.sha256sum)" >> $GITHUB_ENV
-      - name: Generate App Image SHA256 checksums
-        run: |
-          cd ./appimage
-          sha256sum nvim.appimage > nvim.appimage.sha256sum
-          echo "SHA_APP_IMAGE=$(cat nvim.appimage.sha256sum)" >> $GITHUB_ENV
-      - name: Generate App Image Zsync SHA256 checksums
-        run: |
-          cd ./appimage
-          sha256sum nvim.appimage.zsync > nvim.appimage.zsync.sha256sum
-          echo "SHA_APP_IMAGE_ZSYNC=$(cat nvim.appimage.zsync.sha256sum)" >> $GITHUB_ENV
       - name: Generate macOS SHA256 checksums
         run: |
           cd ./nvim-macos
           sha256sum nvim-macos.tar.gz > nvim-macos.tar.gz.sha256sum
           echo "SHA_MACOS=$(cat nvim-macos.tar.gz.sha256sum)" >> $GITHUB_ENV
-      - name: Generate Win64 SHA256 checksums
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd ./nvim-win64
-          sha256sum nvim-win64.zip > nvim-win64.zip.sha256sum
-          echo "SHA_WIN_64_ZIP=$(cat nvim-win64.zip.sha256sum)" >> $GITHUB_ENV
-          sha256sum nvim-win64.msi > nvim-win64.msi.sha256sum
-          echo "SHA_WIN_64_MSI=$(cat nvim-win64.msi.sha256sum)" >> $GITHUB_ENV
+          (echo 'SUBJECT=Nvim development (prerelease) build';
+           echo 'PRERELEASE=--prerelease') >> $GITHUB_ENV
+          gh release delete nightly --yes || true
+          git push origin :nightly || true
       - name: Publish release
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NVIM_VERSION: ${{ needs.linux.outputs.version }}
           DEBUG: api
         run: |
           envsubst < "$GITHUB_WORKSPACE/.github/workflows/notes.md" > "$RUNNER_TEMP/notes.md"
-          gh release create $TAG_NAME $PRERELEASE --notes-file "$RUNNER_TEMP/notes.md" --title "$SUBJECT" --target $GITHUB_SHA nvim-macos/* nvim-linux64/* appimage/* nvim-win64/*
-          if [ "$TAG_NAME" != "nightly" ]; then
-            gh release create stable $PRERELEASE --notes-file "$RUNNER_TEMP/notes.md" --title "$SUBJECT" --target $GITHUB_SHA nvim-macos/* nvim-linux64/* appimage/* nvim-win64/*
-          fi
-  publish-winget:
-    needs: publish
-    runs-on: windows-latest
-    steps:
-      - if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name != 'nightly')
-        name: Publish stable
-        uses: vedantmgoyal2009/winget-releaser@latest
-        with:
-          identifier: Neovim.Neovim
-          release-tag: ${{ github.event.inputs.tag_name || github.ref }}
-          token: ${{ secrets.WINGET_TOKEN }}
-      - if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name == 'nightly')
-        name: Get nightly version
-        id: get-version
-        run: |
-          Invoke-WebRequest https://github.com/neovim/neovim/releases/download/nightly/nvim-win64.msi -OutFile setup.msi
-          Install-Module -Name 'Carbon.Windows.Installer' -Force
-          $VERSION = (Get-CMsi (Resolve-Path .\setup.msi).Path).ProductVersion
-          echo "::set-output name=version::$VERSION"
-      - if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name == 'nightly')
-        name: Publish nightly
-        uses: vedantmgoyal2009/winget-releaser@latest
-        with:
-          identifier: Neovim.Neovim.Nightly
-          version: ${{ steps.get-version.outputs.version }}
-          release-tag: nightly
-          token: ${{ secrets.WINGET_TOKEN }}
+          gh release create nightly $PRERELEASE --notes-file "$RUNNER_TEMP/notes.md" --title "$SUBJECT" --target $GITHUB_SHA nvim-macos/* nvim-linux64/*
+          gh release edit nightly --draft=false
