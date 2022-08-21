@@ -2,14 +2,14 @@ name: CI
 on:
   push:
     branches:
-      - 'master'
-      - 'release-[0-9]+.[0-9]+'
+      - "main"
+      - "release-[0-9]+.[0-9]+"
   pull_request:
     branches:
-      - 'master'
-      - 'release-[0-9]+.[0-9]+'
+      - "main"
+      - "release-[0-9]+.[0-9]+"
     paths-ignore:
-      - 'runtime/doc/*'
+      - "runtime/doc/*"
 
 # Cancel any in-progress CI runs for a PR if it is updated
 concurrency:
@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   lint:
-    if: (github.event_name == 'pull_request' && github.base_ref == 'master') || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-20.04
     timeout-minutes: 10
     env:
@@ -141,7 +141,7 @@ jobs:
     # we are able to build neovim without pigeonholing ourselves into specifics
     # of the bundled dependencies.
 
-    if: (github.event_name == 'pull_request' && github.base_ref == 'master') || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-20.04
     timeout-minutes: 10
     env:
@@ -259,8 +259,8 @@ jobs:
       - name: Install minimum required version of cmake
         if: matrix.cmake == 'minimum_required'
         env:
-          CMAKE_URL: 'https://cmake.org/files/v3.10/cmake-3.10.0-Linux-x86_64.sh'
-          CMAKE_VERSION: '3.10.0'
+          CMAKE_URL: "https://cmake.org/files/v3.10/cmake-3.10.0-Linux-x86_64.sh"
+          CMAKE_VERSION: "3.10.0"
         shell: bash
         run: |
           curl --retry 5 --silent --show-error --fail -o /tmp/cmake-installer.sh "$CMAKE_URL"
@@ -322,37 +322,3 @@ jobs:
 
       - name: Cache dependencies
         run: ./ci/before_cache.sh
-
-  windows:
-    runs-on: windows-2019
-    timeout-minutes: 45
-    env:
-      DEPS_BUILD_DIR: ${{ format('{0}/nvim-deps', github.workspace) }}
-      DEPS_PREFIX: ${{ format('{0}/nvim-deps/usr', github.workspace) }}
-      CMAKE_BUILD_TYPE: "RelWithDebInfo"
-    name: windows (MSVC_64)
-    steps:
-      - uses: actions/checkout@v3
-
-      - uses: actions/cache@v3
-        with:
-          path: ${{ env.DEPS_BUILD_DIR }}
-          key: ${{ hashFiles('cmake.deps\**') }}
-
-      - name: Build deps
-        run: .\ci\build.ps1 -BuildDeps
-
-      - name: Build nvim
-        run: .\ci\build.ps1 -Build
-
-      - name: Install test deps
-        continue-on-error: false
-        run: .\ci\build.ps1 -EnsureTestDeps
-
-      - if: "!cancelled()"
-        name: Run tests
-        run: .\ci\build.ps1 -Test
-
-      - if: "!cancelled()"
-        name: Run old tests
-        run: .\ci\build.ps1 -TestOld

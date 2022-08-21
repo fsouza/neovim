@@ -1,0 +1,32 @@
+name: Sync Upstream
+on:
+  schedule:
+    - cron: "0 */2 * * *"
+
+  workflow_dispatch:
+
+jobs:
+  sync_with_upstream:
+    runs-on: ubuntu-latest
+    name: Sync master with neovim upstream
+
+    steps:
+      - uses: actions/checkout@v3.0.0
+        with:
+          token: ${{ secrets.GH_PAT }}
+          ref: main
+          fetch-depth: 0
+
+      - name: set git config
+        run: |
+          git config user.name fsouzabot
+          git config user.email 'fsouzabot@users.noreply.github.com'
+
+      - name: Pull upstream changes
+        run: |
+          git fetch https://github.com/neovim/neovim.git master
+          git rebase FETCH_HEAD
+
+      - name: push
+        run: |
+          git push origin main --force
