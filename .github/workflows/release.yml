@@ -102,7 +102,7 @@ jobs:
 
   publish:
     needs: [linux, macOS]
-    runs-on: ubuntu-20.04
+    runs-on: macos-latest
     env:
       GH_REPO: ${{ github.repository }}
     permissions:
@@ -116,24 +116,22 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gettext-base
           brew update
-          brew install gh
+          brew install gh gettext
 
       # `sha256sum` outputs <sha> <path>, so we cd into each dir to drop the
       # containing folder from the output.
       - name: Generate Linux64 SHA256 checksums
         run: |
           cd ./nvim-linux64
-          sha256sum nvim-linux64.tar.gz > nvim-linux64.tar.gz.sha256sum
+          shasum -a 256 nvim-linux64.tar.gz > nvim-linux64.tar.gz.sha256sum
           echo "SHA_LINUX_64_TAR=$(cat nvim-linux64.tar.gz.sha256sum)" >> $GITHUB_ENV
-          sha256sum nvim-linux64.deb > nvim-linux64.deb.sha256sum
+          shasum -a 256 nvim-linux64.deb > nvim-linux64.deb.sha256sum
           echo "SHA_LINUX_64_DEB=$(cat nvim-linux64.deb.sha256sum)" >> $GITHUB_ENV
       - name: Generate macOS SHA256 checksums
         run: |
           cd ./nvim-macos
-          sha256sum nvim-macos.tar.gz > nvim-macos.tar.gz.sha256sum
+          shasum -a 256 nvim-macos.tar.gz > nvim-macos.tar.gz.sha256sum
           echo "SHA_MACOS=$(cat nvim-macos.tar.gz.sha256sum)" >> $GITHUB_ENV
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
